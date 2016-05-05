@@ -11,37 +11,51 @@ import (
 	"time"
 )
 
+func NewEmailHandler(addresses []string, fromEmailAddress, fromName, subjectPrepend, mandrillApiKey string) *EmailHandler {
+	return &EmailHandler{
+		addresses:      addresses,
+		fromEmail:      fromEmailAddress,
+		fromName:       fromName,
+		subjectPrepend: subjectPrepend,
+		mandrillApiKey: mandrillApiKey,
+
+		MaxEmailsPerHour: 100,
+		lock:             &sync.Mutex{},
+	}
+}
+
 type EmailHandler struct {
-	Addresses        []string
 	MaxEmailsPerHour int
-	FromEmail        string
-	FromName         string
-	SubjectPrepend   string
-	MandrillApiKey   string
+
+	addresses      []string
+	fromEmail      string
+	fromName       string
+	subjectPrepend string
+	mandrillApiKey string
 
 	emailsSent  int
 	lastMessage string
 	lock        *sync.Mutex
 }
 
-func (t EmailHandler) getPermissionToSendEmail() bool {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	if t.emailsSent > t.MaxEmailsPerHour {
+func (handler *EmailHandler) getPermissionToSendEmail() bool {
+	handler.lock.Lock()
+	defer handler.lock.Unlock()
+	if handler.emailsSent > handler.MaxEmailsPerHour {
 		return false
 	}
-	t.emailsSent++
+	handler.emailsSent++
 	go func() {
 		time.Sleep(time.Hour)
-		t.lock.Lock()
-		defer t.lock.Unlock()
-		t.emailsSent--
+		handler.lock.Lock()
+		defer handler.lock.Unlock()
+		handler.emailsSent--
 	}()
 	return true
 }
 
-func (t EmailHandler) Log(r *log15.Record) error {
-	if hasPermission := t.getPermissionToSendEmail(); !hasPermission {
+func (handler *EmailHandler) Log(r *log15.Record) error {
+	if hasPermission := handler.getPermissionToSendEmail(); !hasPermission {
 		return nil
 	}
 	var textLst = make([]string, 0)
@@ -59,22 +73,22 @@ func (t EmailHandler) Log(r *log15.Record) error {
 	}
 	textLst = append(textLst, ("\nRaw:\n" + string(rawText)))
 
-	client := mandrill.ClientWithKey(t.MandrillApiKey)
+	client := mandrill.ClientWithKey(handler.mandrillApiKey)
 	message := &mandrill.Message{
-		FromEmail: t.FromEmail,
-		FromName:  t.FromName,
-		Subject:   strings.TrimSpace(t.SubjectPrepend + " " + r.Msg),
+		FromEmail: handler.fromEmail,
+		FromName:  handler.fromName,
+		Subject:   strings.TrimSpace(handler.subjectPrepend + " " + r.Msg),
 		Text:      strings.Join(textLst, "\n") + "\n\nStack:\n" + string(debug.Stack()),
 	}
 
-	for _, v := range t.Addresses {
+	for _, v := range handler.addresses {
 		message.AddRecipient(v, "logging-recipient", "to")
 	}
 
-	if message.Text == t.lastMessage {
+	if message.Text == handler.lastMessage {
 		return nil
 	}
-	t.lastMessage = message.Text
+	handler.lastMessage = message.Text
 	_, err = client.MessagesSend(message)
 	return err
 }
