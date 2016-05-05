@@ -1,4 +1,4 @@
-package log15MandrillEmailer
+package log15Emailer
 
 import (
 	"encoding/json"
@@ -13,13 +13,13 @@ import (
 
 type EmailHandler struct {
 	Addresses        []string
-	EmailsSent       int
 	MaxEmailsPerHour int
 	FromEmail        string
 	FromName         string
 	SubjectPrepend   string
 	MandrillApiKey   string
 
+	emailsSent  int
 	lastMessage string
 	lock        *sync.Mutex
 }
@@ -27,15 +27,15 @@ type EmailHandler struct {
 func (t EmailHandler) getPermissionToSendEmail() bool {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	if t.EmailsSent > t.MaxEmailsPerHour {
+	if t.emailsSent > t.MaxEmailsPerHour {
 		return false
 	}
-	t.EmailsSent++
+	t.emailsSent++
 	go func() {
 		time.Sleep(time.Hour)
 		t.lock.Lock()
 		defer t.lock.Unlock()
-		t.EmailsSent--
+		t.emailsSent--
 	}()
 	return true
 }
