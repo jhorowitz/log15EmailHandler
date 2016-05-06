@@ -11,20 +11,26 @@ import (
 	"time"
 )
 
+// Creates a new EmailHandler
 func NewEmailHandler(addresses []string, fromEmailAddress, fromName, subjectPrepend, mandrillApiKey string) *EmailHandler {
 	return &EmailHandler{
+		MaxEmailsPerHour: 100,
+
 		addresses:      addresses,
 		fromEmail:      fromEmailAddress,
 		fromName:       fromName,
 		subjectPrepend: subjectPrepend,
 		mandrillApiKey: mandrillApiKey,
 
-		MaxEmailsPerHour: 100,
-		lock:             &sync.Mutex{},
+		lock: &sync.Mutex{},
 	}
 }
 
+// The handler which should be passed in as a log15 handler.
+// This struct should be created via NewEmailHandler
 type EmailHandler struct {
+	// The maximum number of emails that can be sent in an hour.
+	// NewEmailHandler will set this to 100 by default.
 	MaxEmailsPerHour int
 
 	addresses      []string
@@ -54,6 +60,7 @@ func (handler *EmailHandler) getPermissionToSendEmail() bool {
 	return true
 }
 
+// The Log function fulfills the Log15 logger interface.
 func (handler *EmailHandler) Log(r *log15.Record) error {
 	if hasPermission := handler.getPermissionToSendEmail(); !hasPermission {
 		return nil
